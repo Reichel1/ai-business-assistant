@@ -7,7 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { SparkData } from '@/types/project';
 import { ChatMessage, FeatureSuggestion, KnowledgeEntry } from '@/types/chat';
-import { AIAgent } from '@/lib/ai-agent';
+import { EnhancedAIAgent } from '@/lib/enhanced-ai-agent';
+import { AIService } from '@/lib/ai-service';
+import { APIKeyManager } from '@/components/settings/api-key-manager';
 import { Bot, User, Send, Check, X, FileText, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,12 +24,38 @@ export function ConversationalSpark({ data, onUpdate, onComplete }: Conversation
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeEntry[]>([]);
-  const [aiAgent, setAiAgent] = useState<AIAgent>();
+  const [aiAgent, setAiAgent] = useState<EnhancedAIAgent>();
+  const [, setAiService] = useState<AIService>();
+  const [apiKeys, setApiKeys] = useState<{openai?: string; anthropic?: string; google?: string}>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initialize AI Agent
-    const agent = new AIAgent({
+    // Load API keys from localStorage
+    const savedKeys = localStorage.getItem('ai-api-keys');
+    if (savedKeys) {
+      try {
+        const keys = JSON.parse(savedKeys);
+        setApiKeys(keys);
+        initializeAI(keys);
+      } catch (error) {
+        console.error('Error loading API keys:', error);
+      }
+    }
+  }, [data]);
+
+  const initializeAI = (keys: {openai?: string; anthropic?: string; google?: string}) => {
+    // Initialize AI Service
+    const service = new AIService({
+      openaiApiKey: keys.openai,
+      anthropicApiKey: keys.anthropic,
+      googleApiKey: keys.google,
+      defaultProvider: keys.openai ? 'openai' : keys.anthropic ? 'anthropic' : 'google'
+    });
+
+    setAiService(service);
+
+    // Initialize Enhanced AI Agent
+    const agent = new EnhancedAIAgent({
       stage: 'spark',
       context: {
         stage: 'spark',
@@ -37,16 +65,20 @@ export function ConversationalSpark({ data, onUpdate, onComplete }: Conversation
         completedTopics: [],
         suggestions: []
       },
-      knowledgeBase: []
+      knowledgeBase: [],
+      aiService: service
     });
 
     setAiAgent(agent);
 
     // Send initial greeting
+    const hasAnyKey = keys.openai || keys.anthropic || keys.google;
     const initialMessage: ChatMessage = {
       id: Math.random().toString(36).substring(2, 11),
       role: 'assistant',
-      content: "Hi there! I'm your AI business companion, and I'm excited to help you develop your business idea!\n\nLet's start with the basics - what's the business idea you'd like to explore? Don't worry about having all the details figured out yet, just tell me what's on your mind!",
+      content: hasAnyKey 
+        ? "Hi there! I'm your AI business companion, and I'm excited to help you develop your business idea!\n\nLet's start with the basics - what's the business idea you'd like to explore? Don't worry about having all the details figured out yet, just tell me what's on your mind!"
+        : "Hi! I'm your AI business companion, but I need an API key to get started. Please click the 'AI Settings' button above to configure your OpenAI, Anthropic, or Google AI key so we can have a real conversation about your business idea!",
       timestamp: new Date(),
       metadata: {
         type: 'question',
@@ -55,11 +87,17 @@ export function ConversationalSpark({ data, onUpdate, onComplete }: Conversation
     };
 
     setMessages([initialMessage]);
-  }, [data]);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleApiKeysUpdate = (newKeys: {openai?: string; anthropic?: string; google?: string}) => {
+    setApiKeys(newKeys);
+    localStorage.setItem('ai-api-keys', JSON.stringify(newKeys));
+    initializeAI(newKeys);
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !aiAgent) return;
@@ -214,9 +252,21 @@ export function ConversationalSpark({ data, onUpdate, onComplete }: Conversation
   };
 
   return (
-    <div className="max-w-4xl mx-auto h-full flex flex-col">
-      {/* Knowledge Base Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
+    <div className="max-w-7xl mx-auto h-full flex flex-col">
+      {/* Header with API Settings */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">Business Idea Development</h2>
+          <p className="text-gray-600">Chat with AI to develop and refine your business concept</p>
+        </div>
+        <APIKeyManager 
+          currentKeys={apiKeys}
+          onKeysUpdate={handleApiKeysUpdate}
+        />
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full min-h-0">
         {/* Chat Interface */}
         <div className="lg:col-span-3 flex flex-col">
           <Card className="flex-1 flex flex-col">
@@ -250,7 +300,7 @@ export function ConversationalSpark({ data, onUpdate, onComplete }: Conversation
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Type your message..."
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     disabled={isLoading}
                     className="flex-1"
                   />

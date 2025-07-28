@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Project, ProjectStage, SparkData } from '@/types/project';
 import { ProgressTracker } from './progress-tracker';
-import { SparkStage } from './stages/spark-stage';
+import { ConversationalSpark } from './stages/conversational-spark';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { getNextStage } from '@/lib/workflow-config';
@@ -51,7 +51,7 @@ export function WorkflowLayout({ project, onProjectUpdate, onExit }: WorkflowLay
     switch (currentStage) {
       case 'spark':
         return (
-          <SparkStage
+          <ConversationalSpark
             data={project.data.spark}
             onUpdate={(data: SparkData) => handleDataUpdate('spark', data)}
             onComplete={() => handleStageComplete('spark')}
@@ -153,8 +153,10 @@ export function WorkflowLayout({ project, onProjectUpdate, onExit }: WorkflowLay
       </div>
 
       {/* Main Content */}
-      <main className="py-8">
-        {renderCurrentStage()}
+      <main className="flex-1 py-8 overflow-hidden">
+        <div className="h-full px-4 sm:px-6 lg:px-8">
+          {renderCurrentStage()}
+        </div>
       </main>
     </div>
   );
